@@ -1,0 +1,19 @@
+{
+  "name": "Tandar — find a sunny spot",
+  "short_name": "Tandar",
+  "description": "Real-time sunbathing heatmap based on sun, wind and UV.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+services:
+  tandar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tandar:latest
+    container_name: tandar
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Mapbox public token (read by the client; safe to expose).
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      # Optional: Frost API client id/secret for the backend.
+      FROST_CLIENT_ID: ${FROST_CLIENT_ID:-}
+      FROST_CLIENT_SECRET: ${FROST_CLIENT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
