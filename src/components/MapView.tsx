@@ -88,6 +88,9 @@ export default function MapView() {
   // Storing config as state (not a ref) means the map-mount effect
   // re-runs exactly once when the token arrives, not on every dispatch.
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
+  // Flip to true inside map.on("load") so downstream effects (heatmap
+  // fetch) can wait for the source/layers to be registered.
+  const [mapReady, setMapReady] = useState(false);
 
   // 1. Fetch runtime config first. If missing, surface the error and stop.
   useEffect(() => {
@@ -144,6 +147,7 @@ export default function MapView() {
     );
 
     map.on("load", () => {
+      setMapReady(true);
       map.addSource(SOURCE_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -225,10 +229,13 @@ export default function MapView() {
     );
   }, [status.kind]);
 
-  // 4. Whenever the center changes, fetch the heatmap and push to the source.
+  // 4. Whenever the center changes (and the map is ready), fetch the
+  //    heatmap and push to the source. Gating on mapReady avoids a
+  //    race where the fetch effect runs before map.on("load") has
+  //    registered the GeoJSON source.
   const center = "center" in status ? status.center : null;
   useEffect(() => {
-    if (!center) return;
+    if (!center || !mapReady) return;
     const map = mapRef.current;
     if (!map) return;
     const source = map.getSource(SOURCE_ID) as
@@ -266,7 +273,7 @@ export default function MapView() {
       cancelled = true;
       ctrl.abort();
     };
-  }, [center]);
+  }, [center, mapReady]);
 
   return (
     <div className="relative h-full w-full bg-slate-100">
