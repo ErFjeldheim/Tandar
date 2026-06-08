@@ -176,8 +176,13 @@ export default function MapView() {
       const popup = new mapboxgl.Popup({
         closeButton: false,
         closeOnClick: false,
+        // Avoid jitter when moving the cursor within a single cell.
+        offset: 12,
       });
-      map.on("mouseenter", FILL_LAYER_ID, (e) => {
+      // Use mousemove (not mouseenter) so the popup updates when the
+      // cursor crosses between cells; mouseenter only fires the first
+      // time the layer is entered, so the old data would stick.
+      map.on("mousemove", FILL_LAYER_ID, (e) => {
         map.getCanvas().style.cursor = "pointer";
         const f = e.features?.[0];
         if (!f) return;
