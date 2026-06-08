@@ -4,6 +4,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { FeatureCollection, Polygon } from "geojson";
+import LocationSearch from "@/components/LocationSearch";
 
 interface SpotProps {
   score: number;
@@ -91,6 +92,9 @@ export default function MapView() {
   // Flip to true inside map.on("load") so downstream effects (heatmap
   // fetch) can wait for the source/layers to be registered.
   const [mapReady, setMapReady] = useState(false);
+  // Human-readable label for the current center (geocoded place name or
+  // "My location" / coords fallback). Shown in the status bar.
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
 
   // 1. Fetch runtime config first. If missing, surface the error and stop.
   useEffect(() => {
@@ -275,25 +279,69 @@ export default function MapView() {
     };
   }, [center, mapReady]);
 
+  function handleSearchSelect(coord: [number, number], name: string) {
+    mapRef.current?.flyTo({ center: coord, zoom: 17 });
+    setPlaceLabel(name);
+    dispatch({ type: "located", center: coord });
+  }
+
+  function handleUseMyLocation() {
+    if (!("geolocation" in navigator)) {
+      dispatch({
+        type: "error",
+        message: "Geolocation not supported by this browser.",
+        center: FALLBACK,
+      });
+      return;
+    }
+    setPlaceLabel(null);
+    dispatch({ type: "locating" });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+        setPlaceLabel("My location");
+        mapRef.current?.flyTo({ center: c, zoom: 17 });
+        dispatch({ type: "located", center: c });
+      },
+      (err) => {
+        dispatch({
+          type: "error",
+          message: `Geolocation denied (${err.message}).`,
+          center: FALLBACK,
+        });
+      },
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }
+
   return (
     <div className="relative h-full w-full bg-slate-100">
       <div ref={containerRef} className="h-full w-full" />
-      <StatusBar status={status} />
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+        {config && (
+          <LocationSearch
+            token={config.mapboxToken}
+            onSelect={handleSearchSelect}
+            onUseMyLocation={handleUseMyLocation}
+          />
+        )}
+      </div>
+      <StatusBar status={status} placeLabel={placeLabel} />
     </div>
   );
 }
 
-function StatusBar({ status }: { status: Status }) {
+function StatusBar({ status, placeLabel }: { status: Status; placeLabel: string | null }) {
   let label = "Loading config…";
   if (status.kind === "locating") label = "Locating you…";
   else if (status.kind === "loading")
-    label = `Loading sunbathing spots @ ${status.center[1].toFixed(4)}, ${status.center[0].toFixed(4)}…`;
+    label = `Loading spots @ ${placeLabel ?? `${status.center[1].toFixed(4)}, ${status.center[0].toFixed(4)}`}…`;
   else if (status.kind === "ready")
-    label = `Centered at ${status.center[1].toFixed(4)}, ${status.center[0].toFixed(4)}`;
+    label = `${placeLabel ?? `${status.center[1].toFixed(4)}, ${status.center[0].toFixed(4)}`}`;
   else if (status.kind === "error") label = status.message;
 
   return (
-    <div className="pointer-events-none absolute top-3 left-3 max-w-[80vw] rounded-full bg-white/90 px-3 py-1.5 text-xs text-slate-800 shadow ring-1 ring-slate-200">
+    <div className="pointer-events-none absolute bottom-3 left-3 max-w-[80vw] rounded-full bg-white/90 px-3 py-1.5 text-xs text-slate-800 shadow ring-1 ring-slate-200">
       {label}
     </div>
   );
