@@ -9,6 +9,13 @@ RUN npm ci
 
 # ---- build ----
 FROM base AS build
+# NEXT_PUBLIC_* is inlined by `next build`, so the value must exist at
+# build time. Dokploy exposes app env as --build-arg via the
+# application's `buildArgs` field (see application config).
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+ARG NEXT_PUBLIC_APP_NAME=Tandar
+ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN \
+    NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
