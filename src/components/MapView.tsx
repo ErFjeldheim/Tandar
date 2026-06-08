@@ -270,7 +270,7 @@ export default function MapView() {
 
   return (
     <div className="relative h-full w-full bg-slate-100">
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="h-full w-full" />
       <StatusBar status={status} />
     </div>
   );
