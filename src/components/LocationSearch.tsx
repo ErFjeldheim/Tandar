@@ -131,7 +131,10 @@ export default function LocationSearch({
   }
 
   return (
-    <div className="relative w-full max-w-md">
+    // pointer-events-auto so clicks land here even if a parent sets
+    // pointer-events-none (the map page does this to keep the map draggable
+    // under the surrounding chrome).
+    <div className="relative w-full max-w-md pointer-events-auto">
       <div className="flex items-stretch overflow-hidden rounded-full bg-white shadow ring-1 ring-slate-200 focus-within:ring-2 focus-within:ring-sky-500">
         <input
           ref={inputRef}
