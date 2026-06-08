@@ -38,21 +38,31 @@ function buildColorExpression(): mapboxgl.ExpressionSpecification {
 }
 
 type Status =
+  | { kind: "config" }
   | { kind: "locating" }
   | { kind: "loading"; center: [number, number] }
   | { kind: "ready"; center: [number, number] }
   | { kind: "error"; message: string; center: [number, number] };
 
 type Action =
+  | { type: "configured" }
+  | { type: "config-missing" }
   | { type: "locating" }
   | { type: "located"; center: [number, number] }
   | { type: "loading"; center: [number, number] }
   | { type: "ready"; center: [number, number] }
-  | { type: "error"; message: string; center: [number, number] }
-  | { type: "token-missing" };
+  | { type: "error"; message: string; center: [number, number] };
 
 function reducer(state: Status, action: Action): Status {
   switch (action.type) {
+    case "configured":
+      return { kind: "locating" };
+    case "config-missing":
+      return {
+        kind: "error",
+        message: "NEXT_PUBLIC_MAPBOX_TOKEN is not configured on the server.",
+        center: FALLBACK,
+      };
     case "locating":
       return { kind: "locating" };
     case "located":
@@ -63,30 +73,51 @@ function reducer(state: Status, action: Action): Status {
       return { kind: "ready", center: action.center };
     case "error":
       return { kind: "error", message: action.message, center: action.center };
-    case "token-missing":
-      return {
-        kind: "error",
-        message: "NEXT_PUBLIC_MAPBOX_TOKEN missing - add it to .env.local",
-        center: FALLBACK,
-      };
   }
+}
+
+interface RuntimeConfig {
+  mapboxToken: string;
+  appName: string;
 }
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const [status, dispatch] = useReducer(reducer, { kind: "locating" });
+  const configRef = useRef<RuntimeConfig | null>(null);
+  const [status, dispatch] = useReducer(reducer, { kind: "config" });
 
-  // NEXT_PUBLIC_* is baked at build time, so it's safe to read once at module scope.
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  const tokenMissing = !token;
-
-  // 1. Mount the map once.
+  // 1. Fetch runtime config first. If missing, surface the error and stop.
   useEffect(() => {
-    if (!token) {
-      dispatch({ type: "token-missing" });
-      return;
-    }
+    let cancelled = false;
+    fetch("/api/config", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((cfg: RuntimeConfig) => {
+        if (cancelled) return;
+        if (!cfg.mapboxToken) {
+          dispatch({ type: "config-missing" });
+          return;
+        }
+        configRef.current = cfg;
+        dispatch({ type: "configured" });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        dispatch({
+          type: "error",
+          message: `Failed to load config: ${(err as Error).message}`,
+          center: FALLBACK,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 2. Once we have a token, mount the map. Async-only setState - safe.
+  useEffect(() => {
+    if (!configRef.current) return;
+    const token = configRef.current.mapboxToken;
     if (!containerRef.current || mapRef.current) return;
 
     mapboxgl.accessToken = token;
@@ -164,12 +195,12 @@ export default function MapView() {
       map.remove();
       mapRef.current = null;
     };
-    // token is a build-time constant (NEXT_PUBLIC_*); including it is safe
-    // and satisfies exhaustive-deps without causing re-runs.
-  }, [token]);
+    // Mount only once the token is loaded (any state other than `config`).
+  }, [status.kind]);
 
-  // 2. Try to geolocate the user. setState is inside async callbacks - safe.
+  // 3. Try to geolocate the user.
   useEffect(() => {
+    if (status.kind !== "locating") return;
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
       dispatch({ type: "located", center: FALLBACK });
       return;
@@ -184,7 +215,6 @@ export default function MapView() {
         dispatch({ type: "located", center });
       },
       (err) => {
-        // Fall back to a default so the map still has a center.
         dispatch({
           type: "error",
           message: `Geolocation denied (${err.message}). Using fallback.`,
@@ -193,9 +223,9 @@ export default function MapView() {
       },
       { enableHighAccuracy: true, timeout: 8000 },
     );
-  }, []);
+  }, [status.kind]);
 
-  // 3. Whenever the center changes, fetch the heatmap and push to the source.
+  // 4. Whenever the center changes, fetch the heatmap and push to the source.
   const center = "center" in status ? status.center : null;
   useEffect(() => {
     if (!center) return;
@@ -241,21 +271,14 @@ export default function MapView() {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="absolute inset-0" />
-      <StatusBar status={status} tokenMissing={tokenMissing} />
+      <StatusBar status={status} />
     </div>
   );
 }
 
-function StatusBar({
-  status,
-  tokenMissing,
-}: {
-  status: Status;
-  tokenMissing: boolean;
-}) {
-  let label = "Initialising…";
-  if (tokenMissing) label = "Map disabled: set NEXT_PUBLIC_MAPBOX_TOKEN";
-  else if (status.kind === "locating") label = "Locating you…";
+function StatusBar({ status }: { status: Status }) {
+  let label = "Loading config…";
+  if (status.kind === "locating") label = "Locating you…";
   else if (status.kind === "loading")
     label = `Loading sunbathing spots @ ${status.center[1].toFixed(4)}, ${status.center[0].toFixed(4)}…`;
   else if (status.kind === "ready")
