@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { FeatureCollection, Polygon } from "geojson";
@@ -84,8 +84,10 @@ interface RuntimeConfig {
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const configRef = useRef<RuntimeConfig | null>(null);
   const [status, dispatch] = useReducer(reducer, { kind: "config" });
+  // Storing config as state (not a ref) means the map-mount effect
+  // re-runs exactly once when the token arrives, not on every dispatch.
+  const [config, setConfig] = useState<RuntimeConfig | null>(null);
 
   // 1. Fetch runtime config first. If missing, surface the error and stop.
   useEffect(() => {
@@ -98,7 +100,7 @@ export default function MapView() {
           dispatch({ type: "config-missing" });
           return;
         }
-        configRef.current = cfg;
+        setConfig(cfg);
         dispatch({ type: "configured" });
       })
       .catch((err: unknown) => {
@@ -114,13 +116,11 @@ export default function MapView() {
     };
   }, []);
 
-  // 2. Once we have a token, mount the map. Async-only setState - safe.
+  // 2. Mount the map exactly once, when the token is available.
   useEffect(() => {
-    if (!configRef.current) return;
-    const token = configRef.current.mapboxToken;
-    if (!containerRef.current || mapRef.current) return;
+    if (!config || !containerRef.current || mapRef.current) return;
 
-    mapboxgl.accessToken = token;
+    mapboxgl.accessToken = config.mapboxToken;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
@@ -133,10 +133,11 @@ export default function MapView() {
       new mapboxgl.NavigationControl({ showCompass: false }),
       "top-right",
     );
+    // GeolocateControl without auto-activate; we drive it ourselves.
     map.addControl(
       new mapboxgl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
+        trackUserLocation: false,
         showUserHeading: true,
       }),
       "top-right",
@@ -195,10 +196,9 @@ export default function MapView() {
       map.remove();
       mapRef.current = null;
     };
-    // Mount only once the token is loaded (any state other than `config`).
-  }, [status.kind]);
+  }, [config]);
 
-  // 3. Try to geolocate the user.
+  // 3. Once the map is mounted, try to geolocate the user.
   useEffect(() => {
     if (status.kind !== "locating") return;
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
@@ -269,7 +269,7 @@ export default function MapView() {
   }, [center]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full bg-slate-100">
       <div ref={containerRef} className="absolute inset-0" />
       <StatusBar status={status} />
     </div>
