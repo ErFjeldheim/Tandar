@@ -1,7 +1,7 @@
 // Minimal service worker for the PWA install story.
 // Network-first for everything; no offline cache of API responses, since
 // the spots endpoint depends on the user's live GPS and current time.
-const CACHE = "tandar-v1";
+const CACHE = "tandar-v2";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

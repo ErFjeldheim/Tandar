@@ -179,29 +179,32 @@ export default function MapView() {
         // Avoid jitter when moving the cursor within a single cell.
         offset: 12,
       });
-      // Use mousemove (not mouseenter) so the popup updates when the
-      // cursor crosses between cells; mouseenter only fires the first
-      // time the layer is entered, so the old data would stick.
-      map.on("mousemove", FILL_LAYER_ID, (e) => {
-        map.getCanvas().style.cursor = "pointer";
-        const f = e.features?.[0];
-        if (!f) return;
-        const p = f.properties as unknown as SpotProps;
-        popup
-          .setLngLat(e.lngLat)
-          .setHTML(
-            `<div style="font: 12px/1.3 system-ui, sans-serif; color:#0f172a">
-               <div style="font-weight:600; margin-bottom:4px">Score: ${p.score.toFixed(2)}</div>
-               <div>Sun: ${p.sun.toFixed(2)}</div>
-               <div>Wind: ${p.wind.toFixed(2)}</div>
-               <div>UV: ${p.uv.toFixed(2)}</div>
-             </div>`,
-          )
-          .addTo(map);
-      });
-      map.on("mouseleave", FILL_LAYER_ID, () => {
-        map.getCanvas().style.cursor = "";
-        popup.remove();
+      // Listen to mousemove on the map (not the layer) and do an
+      // explicit hit test. Layer-level events can fail to fire when
+      // the cursor crosses between features, leaving the popup
+      // showing the previous cell's data.
+      map.on("mousemove", (e) => {
+        const features = map.queryRenderedFeatures(e.point, {
+          layers: [FILL_LAYER_ID],
+        });
+        if (features.length > 0) {
+          map.getCanvas().style.cursor = "pointer";
+          const p = features[0].properties as unknown as SpotProps;
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="font: 12px/1.3 system-ui, sans-serif; color:#0f172a">
+                 <div style="font-weight:600; margin-bottom:4px">Score: ${p.score.toFixed(2)}</div>
+                 <div>Sun: ${p.sun.toFixed(2)}</div>
+                 <div>Wind: ${p.wind.toFixed(2)}</div>
+                 <div>UV: ${p.uv.toFixed(2)}</div>
+               </div>`,
+            )
+            .addTo(map);
+        } else {
+          map.getCanvas().style.cursor = "";
+          popup.remove();
+        }
       });
     });
 
